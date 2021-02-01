@@ -1,0 +1,14 @@
+{
+  "node": {
+    "provider": "https://bsc-dataseed1.binance.org/"
+  },
+  "wallet": {
+    "publicKey": "0x9d201bb5da57460496f0d94afd60a5a13a3231d9",
+    "privateKey": "-"
+  },
+  "bot": {
+    "vault": {
+      "liquidityFix": 35
+    }
+  }
+}
