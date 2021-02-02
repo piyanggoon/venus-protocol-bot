@@ -18,6 +18,7 @@ const ComptrollerABI = require('./abis/Comptroller.json');
 const VAIVault = '0x0667Eed0a0aAb930af74a3dfeDD263A73994f216'; // proxy
 const VAIVaultABI = require('./abis/VAIVault.json');
 const VaiUnitroller = VenusConfig.Contracts.VaiUnitroller;
+const VaiControllerABI = require('./abis/VAIController.json');
 const VBep20Delegate = require('./abis/VBep20Delegate.json');
 const Bep20ABI = require('./abis/BEP20.json');
 
@@ -26,8 +27,7 @@ const priceOracle = new web3.eth.Contract(PriceOracleABI, PriceOracle);
 const venusLens = new web3.eth.Contract(VenusLensABI, VenusLens);
 const unitroller = new web3.eth.Contract(ComptrollerABI, Unitroller);
 const vaiVault = new web3.eth.Contract(VAIVaultABI, VAIVault);
-const vaiUnitroller = new web3.eth.Contract(ComptrollerABI, VaiUnitroller);
-const xvs = new web3.eth.Contract(Bep20ABI, VenusConfig.Contracts.XVS); 
+const vaiUnitroller = new web3.eth.Contract(VaiControllerABI, VaiUnitroller);
 const vai = new web3.eth.Contract(Bep20ABI, VenusConfig.Contracts.VAI);
 
 const bsc = Common.forCustomChain(
@@ -226,8 +226,6 @@ async function getVenusAPY(token) {
 async function getVaultAPY(amount = 0) {
   let totalVAI = await vai.methods.balanceOf(VAIVault).call();
       totalVAI = toEther(totalVAI);
-  //let totalXVS = await xvs.methods.balanceOf(VAIVault).call();
-  //    totalXVS = toEther(totalXVS);
   let venusVAIVaultRate = await unitroller.methods.venusVAIVaultRate().call();
       venusVAIVaultRate = (venusVAIVaultRate / 1e18);
   let venusPerDay = ((amount / totalVAI) * (venusVAIVaultRate * (20 * 60 * 24)));
@@ -386,8 +384,8 @@ async function calculator() {
   console.log(`XVS Earned = ${round(XVSAccrued.accrued, 8)} ($${round(XVSAccrued.price, 2)})`)
   console.log(`Total XVS = ${round(totalReward, 8)} ($${round(rewardPrice, 2)})`)
   console.log('===================================')
-  console.log(`Venus Estimated = ${round(estXVSEarned, 8)} ($${round(estEarnedPrice, 2)})`)
-  console.log(`Vault Estimated = ${round(estXVSVault, 8)} ($${round(estVaultPrice, 2)})`)
+  console.log(`XVS Vault Est. = ${round(estXVSVault, 8)} ($${round(estVaultPrice, 2)})`)
+  console.log(`XVS Earned Est. = ${round(estXVSEarned, 8)} ($${round(estEarnedPrice, 2)})`)
   console.log(`Daily Earnings = ${round((estXVSEarned + estXVSVault), 8)} ($${round((estEarnedPrice + estVaultPrice), 2)})`)
   console.log('===================================')
 }
