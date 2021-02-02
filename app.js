@@ -1,5 +1,6 @@
 const Web3 = require('web3');
 const Provider = Web3.providers.HttpProvider;
+//const Provider = Web3.providers.WebsocketProvider;
 const Tx = require('ethereumjs-tx').Transaction;
 const Common = require('ethereumjs-common').default;
 const Interval = require('interval-promise');
@@ -17,6 +18,8 @@ const ComptrollerABI = VenusABI.Comptroller;
 const VAIVault = '0x0667Eed0a0aAb930af74a3dfeDD263A73994f216'; // proxy
 const VAIVaultABI = require('./abis/VAIVault.json');
 const VaiUnitroller = VenusConfig.Contracts.VaiUnitroller;
+const VBep20Delegate = require('./abis/VBep20Delegate.json');
+const Bep20ABI = require('./abis/BEP20.json');
 
 const web3 = new Web3(new Provider(config.node.provider));
 const priceOracle = new web3.eth.Contract(PriceOracleABI, PriceOracle);
@@ -24,6 +27,8 @@ const venusLens = new web3.eth.Contract(VenusLensABI, VenusLens);
 const unitroller = new web3.eth.Contract(ComptrollerABI, Unitroller);
 const vaiVault = new web3.eth.Contract(VAIVaultABI, VAIVault);
 const vaiUnitroller = new web3.eth.Contract(ComptrollerABI, VaiUnitroller);
+const xvs = new web3.eth.Contract(Bep20ABI, VenusConfig.Contracts.XVS); 
+const vai = new web3.eth.Contract(Bep20ABI, VenusConfig.Contracts.VAI);
 
 const bsc = Common.forCustomChain(
   'mainnet',
@@ -81,6 +86,10 @@ function getTokenName(address) {
     }
   }
   return result;
+}
+
+function getToken(name) {
+  return tokens[`v${name}`];
 }
 
 function getTokens() {
@@ -189,6 +198,42 @@ async function getXVSAccrued(owner) {
   };
 }
 
+async function getVTokenAPY(token) {
+  // fucking lazy!
+}
+
+async function getVenusAPY(token) {
+  let vToken = new web3.eth.Contract(VBep20Delegate, token);
+  let venusSpeed = await unitroller.methods.venusSpeeds(token).call();
+      venusSpeed = (venusSpeed / 1e18);
+  let venusPrice = await priceOracle.methods.getUnderlyingPrice(tokens.vXVS).call();
+      venusPrice = (venusPrice / 1e18);
+  let tokenPrice = await priceOracle.methods.getUnderlyingPrice(token).call();
+      tokenPrice = (tokenPrice / 1e18);
+  let exchangeRate = await vToken.methods.exchangeRateCurrent().call();
+      exchangeRate = (exchangeRate / 1e18);
+  let totalBorrows = await vToken.methods.totalBorrowsCurrent().call();
+      totalBorrows = (totalBorrows / 1e18);
+  let totalSupply = await vToken.methods.totalSupply().call();
+      totalSupply = ((totalSupply * exchangeRate) / 1e18);
+  let venusPerDay = (venusSpeed * (20 * 60 * 24));
+  return {
+    supply: ((Math.pow((1 + (((venusPerDay * venusPrice) / tokenPrice) / totalSupply)), 365) - 1) * 100),
+    borrow: ((Math.pow((1 + (((venusPerDay * venusPrice) / tokenPrice) / totalBorrows)), 365) - 1) * 100)
+  };
+}
+
+async function getVaultAPY(amount = 0) { // that true? : idk.
+  let totalVAI = await vai.methods.balanceOf(VAIVault).call();
+      totalVAI = toEther(totalVAI);
+  let totalXVS = await xvs.methods.balanceOf(VAIVault).call();
+      totalXVS = toEther(totalXVS);
+  let venusPerDay = ((amount / totalVAI) * totalXVS);
+  let vaiPerYear = ((venusPerDay * await getOraclePrice(tokens.vXVS)) * 365);
+  let vaultAPY = ((vaiPerYear * 100) / amount);
+  return vaultAPY;
+}
+
 // mint, repay, stake, unstake
 async function mintVAI(owner, amount) {
   let func = vaiUnitroller.methods.mintVAI(amount);
@@ -292,11 +337,15 @@ async function calculator() {
   console.log(`Total Borrow = $${round(totalBorrow, 2)} (${round(borrowPercent, 2)}%)`)
   console.log(`Liquidity = $${round(liquidity, 2)} (${round(liquidityPercent, 2)}%)`)
   console.log('===================================')
-  if (VAIBorrow != '0') {
-    console.log(`VAI Borrow = $${VAIBorrow}`)
-  }
   for (let val of vTokens) {
-    if (val.borrowPrice > 0) {
+    if (val.supplyPrice >= 0.1) {
+      console.log(`${val.token} Supply = ${round(val.supply, 8)} ($${round(val.supplyPrice, 2)})`)
+    }
+  }
+  console.log('===================================')
+  console.log(`VAI Borrow = $${VAIBorrow}`)
+  for (let val of vTokens) {
+    if (val.borrowPrice >= 0.1) {
       console.log(`${val.token} Borrow = ${round(val.borrow, 8)} ($${round(val.borrowPrice, 2)})`)
     }
   }
@@ -308,12 +357,44 @@ async function calculator() {
   console.log(`XVS Earned = ${round(XVSAccrued.accrued, 8)} ($${round(XVSAccrued.price, 2)})`)
   console.log(`Total XVS = ${round(totalReward, 8)} ($${round(rewardPrice, 2)})`)
   console.log('===================================')
+
+  // XVS Earned (estimated) (supply, borrow)
+  let estXVSEarned = 0;
+  let estEarnedPrice = 0;
+  for (let val of vTokens) {
+    let apy = await getVenusAPY(getToken(val.token));
+    if (val.supplyPrice > 0) {
+      let vaiPerDay = (((val.supplyPrice * apy.supply) / 100) / 365);
+      estXVSEarned += (vaiPerDay / XVSOracle);
+    }
+    if (val.borrowPrice > 0) {
+      let vaiPerDay = (((val.borrowPrice * apy.borrow) / 100) / 365);
+      estXVSEarned += (vaiPerDay / XVSOracle);
+    }
+  }
+  if (estXVSEarned > 0) {
+    estEarnedPrice = (estXVSEarned * XVSOracle);
+  }
+
+  // Vault (estimated)
+  let estXVSVault = 0;
+  let estVaultPrice = 0;
+  let vaultAPY = await getVaultAPY(VAIStake);
+  if (vaultAPY > 0) {
+    estXVSVault = ((((VAIStake * vaultAPY) / 100) / 365) / XVSOracle);
+    estVaultPrice = (estXVSVault * XVSOracle);
+  }
+
+  console.log(`Venus Estimated = ${round(estXVSEarned, 8)} ($${round(estEarnedPrice, 2)})`)
+  console.log(`Vault Estimated = ${round(estXVSVault, 8)} ($${round(estVaultPrice, 2)})`)
+  console.log(`Daily Earnings = ${round((estXVSEarned + estXVSVault), 8)} ($${round((estEarnedPrice + estVaultPrice), 2)})`)
+  console.log('===================================')
 }
 
 Interval(async () => {
   try {
     await calculator();
   } catch (err) {
-    //console.log(err)
+    console.log(err)
   }
 }, 10000);
