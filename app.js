@@ -14,7 +14,7 @@ const PriceOracleABI = VenusABI.PriceOracle;
 const VenusLens = VenusConfig.Contracts.VenusLens;
 const VenusLensABI = VenusABI.VenusLens;
 const Unitroller = VenusConfig.Contracts.Unitroller; // proxy
-const ComptrollerABI = VenusABI.Comptroller;
+const ComptrollerABI = require('./abis/Comptroller.json');
 const VAIVault = '0x0667Eed0a0aAb930af74a3dfeDD263A73994f216'; // proxy
 const VAIVaultABI = require('./abis/VAIVault.json');
 const VaiUnitroller = VenusConfig.Contracts.VaiUnitroller;
@@ -223,12 +223,14 @@ async function getVenusAPY(token) {
   };
 }
 
-async function getVaultAPY(amount = 0) { // that true? : idk.
+async function getVaultAPY(amount = 0) {
   let totalVAI = await vai.methods.balanceOf(VAIVault).call();
       totalVAI = toEther(totalVAI);
-  let totalXVS = await xvs.methods.balanceOf(VAIVault).call();
-      totalXVS = toEther(totalXVS);
-  let venusPerDay = ((amount / totalVAI) * totalXVS);
+  //let totalXVS = await xvs.methods.balanceOf(VAIVault).call();
+  //    totalXVS = toEther(totalXVS);
+  let venusVAIVaultRate = await unitroller.methods.venusVAIVaultRate().call();
+      venusVAIVaultRate = (venusVAIVaultRate / 1e18);
+  let venusPerDay = ((amount / totalVAI) * (venusVAIVaultRate * (20 * 60 * 24)));
   let vaiPerYear = ((venusPerDay * await getOraclePrice(tokens.vXVS)) * 365);
   let vaultAPY = ((vaiPerYear * 100) / amount);
   return vaultAPY;
@@ -329,6 +331,33 @@ async function calculator() {
   let XVSOracle = await getOraclePrice(tokens.vXVS);
   let BNBOracle = await getOraclePrice(tokens.vBNB);
 
+  // XVS Earned (estimated) (supply, borrow)
+  let estXVSEarned = 0;
+  let estEarnedPrice = 0;
+  for (let val of vTokens) {
+    let apy = await getVenusAPY(getToken(val.token));
+    if (val.supplyPrice > 0) {
+      let vaiPerDay = (((val.supplyPrice * apy.supply) / 100) / 365);
+      estXVSEarned += (vaiPerDay / XVSOracle);
+    }
+    if (val.borrowPrice > 0) {
+      let vaiPerDay = (((val.borrowPrice * apy.borrow) / 100) / 365);
+      estXVSEarned += (vaiPerDay / XVSOracle);
+    }
+  }
+  if (estXVSEarned > 0) {
+    estEarnedPrice = (estXVSEarned * XVSOracle);
+  }
+
+  // Vault (estimated)
+  let estXVSVault = 0;
+  let estVaultPrice = 0;
+  let vaultAPY = await getVaultAPY(VAIStake);
+  if (vaultAPY > 0) {
+    estXVSVault = ((((VAIStake * vaultAPY) / 100) / 365) / XVSOracle);
+    estVaultPrice = (estXVSVault * XVSOracle);
+  }
+
   console.clear();
   console.log(`[1 XVS = $${round(XVSOracle, 2)} || 1 BNB = $${round(BNBOracle, 2)}]`)
   console.log('===================================')
@@ -357,34 +386,6 @@ async function calculator() {
   console.log(`XVS Earned = ${round(XVSAccrued.accrued, 8)} ($${round(XVSAccrued.price, 2)})`)
   console.log(`Total XVS = ${round(totalReward, 8)} ($${round(rewardPrice, 2)})`)
   console.log('===================================')
-
-  // XVS Earned (estimated) (supply, borrow)
-  let estXVSEarned = 0;
-  let estEarnedPrice = 0;
-  for (let val of vTokens) {
-    let apy = await getVenusAPY(getToken(val.token));
-    if (val.supplyPrice > 0) {
-      let vaiPerDay = (((val.supplyPrice * apy.supply) / 100) / 365);
-      estXVSEarned += (vaiPerDay / XVSOracle);
-    }
-    if (val.borrowPrice > 0) {
-      let vaiPerDay = (((val.borrowPrice * apy.borrow) / 100) / 365);
-      estXVSEarned += (vaiPerDay / XVSOracle);
-    }
-  }
-  if (estXVSEarned > 0) {
-    estEarnedPrice = (estXVSEarned * XVSOracle);
-  }
-
-  // Vault (estimated)
-  let estXVSVault = 0;
-  let estVaultPrice = 0;
-  let vaultAPY = await getVaultAPY(VAIStake);
-  if (vaultAPY > 0) {
-    estXVSVault = ((((VAIStake * vaultAPY) / 100) / 365) / XVSOracle);
-    estVaultPrice = (estXVSVault * XVSOracle);
-  }
-
   console.log(`Venus Estimated = ${round(estXVSEarned, 8)} ($${round(estEarnedPrice, 2)})`)
   console.log(`Vault Estimated = ${round(estXVSVault, 8)} ($${round(estVaultPrice, 2)})`)
   console.log(`Daily Earnings = ${round((estXVSEarned + estXVSVault), 8)} ($${round((estEarnedPrice + estVaultPrice), 2)})`)
@@ -395,6 +396,6 @@ Interval(async () => {
   try {
     await calculator();
   } catch (err) {
-    console.log(err)
+    //console.log(err)
   }
 }, 10000);
