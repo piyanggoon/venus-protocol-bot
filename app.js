@@ -209,7 +209,16 @@ async function getXVSAccrued(owner, price) {
 }
 
 async function getVTokenAPY(token) {
-  // fucking lazy!
+  let vToken = new web3.eth.Contract(VBep20Delegate, token);
+  let supplyRatePerBlock = await vToken.methods.supplyRatePerBlock().call();
+      supplyRatePerBlock = (supplyRatePerBlock / 1e18);
+  let borrowRatePerBlock = await vToken.methods.borrowRatePerBlock().call();
+      borrowRatePerBlock = (borrowRatePerBlock / 1e18);
+  let blockPerDay = (20 * 60 * 24);
+  return {
+    supply: ((Math.pow(((supplyRatePerBlock * blockPerDay) + 1), 365) - 1) * 100),
+    borrow: ((Math.pow(((borrowRatePerBlock * blockPerDay) + 1), 365) - 1) * 100)
+  };
 }
 
 async function getVenusAPY(token, prices) {
@@ -334,6 +343,29 @@ async function calculator() {
     }
   }
 
+  // Interest
+  let interests = { supply: [], borrow: [] };
+  for (let val of vTokens) {
+    let price = prices[val.token];
+    let apy = await getVTokenAPY(getToken(val.token));
+    if (val.supply > 0) {
+      let interestPerDay = (((val.supply * apy.supply) / 100) / 365);
+      interests.supply.push({
+        token: val.token,
+        interest: interestPerDay,
+        price: (interestPerDay * price)
+      });
+    }
+    if (val.borrow > 0) {
+      let interestPerDay = (((val.borrow * apy.borrow) / 100) / 365);
+      interests.borrow.push({
+        token: val.token,
+        interest: interestPerDay,
+        price: (interestPerDay * price)
+      });
+    }
+  }
+
   // XVS Earned (estimated) (supply, borrow)
   let estXVSEarned = 0;
   let estEarnedPrice = 0;
@@ -394,6 +426,22 @@ async function calculator() {
   console.log(`XVS Earned Est. = ${round(estXVSEarned, 8)} ($${round(estEarnedPrice, 2)})`)
   console.log(`Daily Earnings = ${round((estXVSEarned + estXVSVault), 8)} ($${round((estEarnedPrice + estVaultPrice), 2)})`)
   console.log('===================================')
+  if (interests.supply.length > 0) {
+    for (let val of interests.supply) {
+      if (val.price >= 0.01) {
+        console.log(`${val.token} Supply Int. = ${round(val.interest, 8)} ($${round(val.price, 2)})`)
+      }
+    }
+    console.log('===================================')
+  }
+  if (interests.borrow.length > 0) {
+    for (let val of interests.borrow) {
+      if (val.price >= 0.01) {
+        console.log(`${val.token} Borrow Int. = ${round(val.interest, 8)} ($${round(val.price, 2)})`)
+      }
+    }
+    console.log('===================================')
+  }
 }
 
 Interval(async () => {
