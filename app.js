@@ -342,7 +342,7 @@ async function calculator() {
       }
     }
   }
-
+  
   // Interest
   let interests = { supply: [], borrow: [] };
   for (let val of vTokens) {
@@ -393,6 +393,10 @@ async function calculator() {
     estVaultPrice = (estXVSVault * prices.XVS);
   }
 
+  let supplyInt = interests.supply.reduce((a, b) => (a + b.price), 0);
+  let borrowInt = interests.borrow.reduce((a, b) => (a + b.price), 0);
+  let dailyEarnings = ((estEarnedPrice + estVaultPrice + supplyInt) - borrowInt);
+
   // Simple console :)
   console.clear();
   console.log(`[1 XVS = $${round(prices.XVS, 2)} || 1 BNB = $${round(prices.BNB, 2)}]`)
@@ -424,7 +428,7 @@ async function calculator() {
   console.log('===================================')
   console.log(`XVS Vault Est. = ${round(estXVSVault, 8)} ($${round(estVaultPrice, 2)})`)
   console.log(`XVS Earned Est. = ${round(estXVSEarned, 8)} ($${round(estEarnedPrice, 2)})`)
-  console.log(`Daily Earnings = ${round((estXVSEarned + estXVSVault), 8)} ($${round((estEarnedPrice + estVaultPrice), 2)})`)
+  console.log(`XVS Daily Est. = ${round((estXVSEarned + estXVSVault), 8)} ($${round((estEarnedPrice + estVaultPrice), 2)})`)
   console.log('===================================')
   if (interests.supply.length > 0) {
     for (let val of interests.supply) {
@@ -442,6 +446,8 @@ async function calculator() {
     }
     console.log('===================================')
   }
+  console.log(`Daily Earnings Est. = $${round(dailyEarnings, 2)}`)
+  console.log('===================================')
 }
 
 Interval(async () => {
