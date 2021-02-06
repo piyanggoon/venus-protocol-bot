@@ -4,6 +4,7 @@ const Provider = Web3.providers.HttpProvider;
 const Tx = require('ethereumjs-tx').Transaction;
 const Common = require('ethereumjs-common').default;
 const Interval = require('interval-promise');
+const request = require('request');
 
 const config = require('./config.json');
 const VenusABI = require('./networks/mainnet-abi.json');
@@ -96,6 +97,10 @@ function getTokens() {
   return Object.values(tokens);
 }
 
+function getAPY(val) {
+  return ((Math.pow((val + 1), 365) - 1) * 100);
+}
+
 // Transaction
 async function getNonce() {
   let address = config.wallet.publicKey;
@@ -117,7 +122,7 @@ async function createTransaction(to, data, gas) {
   try {
     txid = await sendTransaction({
       nonce: await getNonce(),
-      gasPrice: 20000000000, // 20 gwei
+      gasPrice: 15000000000, // 15 gwei
       gasLimit: gas,
       data: data,
       to: to,
@@ -143,6 +148,21 @@ async function estimateGas(owner, func) {
 
   gas = parseInt(gas * 1.2); // fuck it!
   return gas; 
+}
+
+// Binance
+async function getExchangePrice(pair) {
+  return new Promise((resolve) => {
+    let url = `https://api.binance.com/api/v1/depth?symbol=${pair}&limit=5`;
+    request.get(url, (err, res, body) => {
+      if(err || res.statusCode != 200)
+        return resolve(0);
+      let json = JSON.parse(body);
+      let bid = parseFloat(json.bids[0][0]);
+      let ask = parseFloat(json.asks[0][0]); 
+      resolve(round(((bid + ask) / 2), 4));
+    });
+  });
 }
 
 // Venus Protocol
@@ -216,8 +236,8 @@ async function getVTokenAPY(token) {
       borrowRatePerBlock = (borrowRatePerBlock / 1e18);
   let blockPerDay = (20 * 60 * 24);
   return {
-    supply: ((Math.pow(((supplyRatePerBlock * blockPerDay) + 1), 365) - 1) * 100),
-    borrow: ((Math.pow(((borrowRatePerBlock * blockPerDay) + 1), 365) - 1) * 100)
+    supply: getAPY((supplyRatePerBlock * blockPerDay)),
+    borrow: getAPY((borrowRatePerBlock * blockPerDay)),
   };
 }
 
@@ -234,9 +254,10 @@ async function getVenusAPY(token, prices) {
   let totalSupply = await vToken.methods.totalSupply().call();
       totalSupply = ((totalSupply * exchangeRate) / 1e18);
   let venusPerDay = (venusSpeed * (20 * 60 * 24));
+  let tokenPerDay = ((venusPerDay * venusPrice) / tokenPrice);
   return {
-    supply: ((Math.pow((1 + (((venusPerDay * venusPrice) / tokenPrice) / totalSupply)), 365) - 1) * 100),
-    borrow: ((Math.pow((1 + (((venusPerDay * venusPrice) / tokenPrice) / totalBorrows)), 365) - 1) * 100)
+    supply: getAPY((tokenPerDay / totalSupply)),
+    borrow: getAPY((tokenPerDay / totalBorrows)),
   };
 }
 
@@ -283,6 +304,19 @@ async function withdrawVAIVault(owner, amount) {
 async function calculator() {
   let owner = config.wallet.publicKey;
   let prices = await getOraclePrices(getTokens());
+
+  // Slove oracle price slowly update :)
+  // currently, working on XVS only!
+  if (config.bot.vault.exchangeRate) {
+    let XVSExchange = await getExchangePrice('XVSUSDT');
+    if (XVSExchange > 0) {
+      let diffPercent = (100 - ((XVSExchange / prices.XVS) * 100));
+      if (diffPercent > 0) {
+        prices.XVS = XVSExchange;
+      }
+    }
+  }
+
   let vTokens = await getVTokens(getTokens(), owner, prices);
   let VAIBorrow = await getVAIBorrow(owner);
   let VAIStake = await getVAIStake(owner);
@@ -343,7 +377,7 @@ async function calculator() {
     }
   }
   
-  // Interest
+  // Interest (estimated)
   let interests = { supply: [], borrow: [] };
   for (let val of vTokens) {
     let price = prices[val.token];
@@ -407,20 +441,20 @@ async function calculator() {
   console.log(`Liquidity = $${round(liquidity, 2)} (${round(liquidityPercent, 2)}%)`)
   console.log('===================================')
   for (let val of vTokens) {
-    if (val.supplyPrice >= 0.1) {
+    if (val.supplyPrice >= 0.01) {
       console.log(`${val.token} Supply = ${round(val.supply, 8)} ($${round(val.supplyPrice, 2)})`)
     }
   }
   console.log('===================================')
   console.log(`VAI Borrow = $${VAIBorrow}`)
   for (let val of vTokens) {
-    if (val.borrowPrice >= 0.1) {
+    if (val.borrowPrice >= 0.01) {
       console.log(`${val.token} Borrow = ${round(val.borrow, 8)} ($${round(val.borrowPrice, 2)})`)
     }
   }
   console.log('===================================')
   console.log(`VAI Stake = $${VAIStake}`)
-  console.log(`Stake Estimated = $${stakeAmount}`)
+  console.log(`Stake Estimated = $${(stakeAmount >= 0.01 ? stakeAmount : 0)}`)
   console.log('===================================')
   console.log(`XVS Vault = ${round(XVSVault.vault, 8)} ($${round(XVSVault.price, 2)})`)
   console.log(`XVS Earned = ${round(XVSAccrued.accrued, 8)} ($${round(XVSAccrued.price, 2)})`)
@@ -431,20 +465,28 @@ async function calculator() {
   console.log(`XVS Daily Est. = ${round((estXVSEarned + estXVSVault), 8)} ($${round((estEarnedPrice + estVaultPrice), 2)})`)
   console.log('===================================')
   if (interests.supply.length > 0) {
+    let count = 0;
     for (let val of interests.supply) {
       if (val.price >= 0.01) {
         console.log(`${val.token} Supply Int. = ${round(val.interest, 8)} ($${round(val.price, 2)})`)
+        count++;
       }
     }
-    console.log('===================================')
+    if (count > 0) {
+      console.log('===================================')
+    }
   }
   if (interests.borrow.length > 0) {
+    let count = 0;
     for (let val of interests.borrow) {
       if (val.price >= 0.01) {
         console.log(`${val.token} Borrow Int. = ${round(val.interest, 8)} ($${round(val.price, 2)})`)
+        count++;
       }
     }
-    console.log('===================================')
+    if (count > 0) {
+      console.log('===================================')
+    }
   }
   console.log(`Daily Earnings Est. = $${round(dailyEarnings, 2)}`)
   console.log('===================================')
