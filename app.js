@@ -162,7 +162,7 @@ async function estimateGas(owner, func) {
 }
 
 // Binance
-async function getExchangePrices() {
+function getExchangePrices() {
   return new Promise((resolve) => {
     let result = {};
     let pairs = Object.keys(tokens).map(val => val.substr(1));
@@ -334,10 +334,10 @@ async function withdrawVAIVault(owner, amount) {
 async function calculator() {
   let owner = config.wallet.publicKey;
   let prices = await getOraclePrices(getTokens());
-  let exchangePrices = await getExchangePrices();
 
   // Slove oracle price slowly update :)
   if (config.bot.vault.exchangeRate) {
+    let exchangePrices = await getExchangePrices();
     for (let key in exchangePrices) {
       let price = exchangePrices[key];
       if (price > 0) {
