@@ -78,6 +78,17 @@ function isMatch(val1, val2) {
   return false;
 }
 
+function isPair(pairs, symbol) {
+  let result = '';
+  for (let val of pairs) {
+    if (symbol == `${val}USDT`) {
+      result = val;
+      break;
+    }
+  }
+  return result;
+}
+
 function getTokenName(address) {
   let result = '-';
   for (let key in tokens) {
@@ -151,16 +162,35 @@ async function estimateGas(owner, func) {
 }
 
 // Binance
-async function getExchangePrice(pair) {
+async function getExchangePrices() {
   return new Promise((resolve) => {
-    let url = `https://api.binance.com/api/v1/depth?symbol=${pair}&limit=5`;
+    let result = {};
+    let pairs = Object.keys(tokens).map(val => val.substr(1));
+    for (let val of pairs) {
+      result[val] = 0;
+    }
+
+    let url = 'https://api.binance.com/api/v3/ticker/price';
     request.get(url, (err, res, body) => {
       if(err || res.statusCode != 200)
-        return resolve(0);
+        return resolve(result);
+
       let json = JSON.parse(body);
-      let bid = parseFloat(json.bids[0][0]);
-      let ask = parseFloat(json.asks[0][0]); 
-      resolve(round(((bid + ask) / 2), 4));
+      for (let val of json) {
+        let symbol = isPair(pairs, val.symbol);
+        if (symbol != '') {
+          result[symbol] = round(val.price, 4);
+        }
+      }
+
+      // fix price
+      result.BETH = result.ETH;
+      result.BUSD = 0;
+      result.USDT = 0;
+      result.USDC = 0;
+      result.DAI = 0;
+
+      resolve(result);
     });
   });
 }
@@ -304,15 +334,17 @@ async function withdrawVAIVault(owner, amount) {
 async function calculator() {
   let owner = config.wallet.publicKey;
   let prices = await getOraclePrices(getTokens());
+  let exchangePrices = await getExchangePrices();
 
   // Slove oracle price slowly update :)
-  // currently, working on XVS only!
   if (config.bot.vault.exchangeRate) {
-    let XVSExchange = await getExchangePrice('XVSUSDT');
-    if (XVSExchange > 0) {
-      let diffPercent = (100 - ((XVSExchange / prices.XVS) * 100));
-      if (diffPercent > 0) {
-        prices.XVS = XVSExchange;
+    for (let key in exchangePrices) {
+      let price = exchangePrices[key];
+      if (price > 0) {
+        let diffPercent = (100 - ((price / prices[key]) * 100));
+        if (diffPercent > 0) {
+          prices[key] = price;
+        }
       }
     }
   }
