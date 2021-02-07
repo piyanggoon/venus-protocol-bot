@@ -224,8 +224,8 @@ async function getVTokens(tokens, owner, prices) {
         token: token,
         supply: toEther(val.balanceOfUnderlying),
         borrow: toEther(val.borrowBalanceCurrent),
-        supplyPrice: toEther(val.balanceOfUnderlying) * prices[token],
-        borrowPrice: toEther(val.borrowBalanceCurrent) * prices[token]
+        supplyPrice: (toEther(val.balanceOfUnderlying) * prices[token]),
+        borrowPrice: (toEther(val.borrowBalanceCurrent) * prices[token])
       });
     }
   }
@@ -356,7 +356,7 @@ async function calculator() {
   let totalBorrow = vTokens.reduce((a, b) => (a + b.borrowPrice), 0);
       totalBorrow += VAIBorrow;
   let borrowLimit = (totalSupply * 0.60); // 60% of supply
-  let borrowPercent = (totalBorrow / borrowLimit) * 100;
+  let borrowPercent = ((totalBorrow / borrowLimit) * 100);
   let liquidity = (borrowLimit - totalBorrow);
   let liquidityPercent = (100 - borrowPercent);
 
@@ -367,13 +367,14 @@ async function calculator() {
 
   // Simple bot
   let liquidityFix = config.bot.vault.liquidityFix; // lower = risk (liquidation)
-  let stakePercent = (100 - (((totalBorrow - VAIBorrow) / borrowLimit) * 100)) - liquidityFix;
+  let liquidityGap = config.bot.vault.liquidityGap;
+  let stakePercent = ((100 - (((totalBorrow - VAIBorrow) / borrowLimit) * 100)) - liquidityFix);
   let stakeAmount = round(((borrowLimit * stakePercent) / 100), 2);
 
   if (config.wallet.privateKey != '-') {
     let VAIEmpty = round((VAIBorrow - VAIStake), 2);
     if (stakeAmount > 0) {
-      if (liquidityPercent <= (liquidityFix - 5)) {
+      if (liquidityPercent <= (liquidityFix - liquidityGap)) {
         if (VAIStake > stakeAmount) {
           let val = toWei(round((VAIStake - stakeAmount), 2));
           let tx1 = await withdrawVAIVault(owner, val);
@@ -383,7 +384,7 @@ async function calculator() {
         } else if (VAIEmpty > 0) {
           await repayVAI(owner, toWei(VAIEmpty));
         }
-      } else if (liquidityPercent >= (liquidityFix + 5)) {
+      } else if (liquidityPercent >= (liquidityFix + liquidityGap)) {
         if (stakeAmount > VAIBorrow) {
           let val = toWei(round((stakeAmount - VAIBorrow), 2));
           let tx1 = await mintVAI(owner, val);

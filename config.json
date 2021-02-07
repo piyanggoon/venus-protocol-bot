@@ -8,8 +8,9 @@
   },
   "bot": {
     "vault": {
+      "exchangeRate": true,
       "liquidityFix": 35,
-      "exchangeRate": true
+      "liquidityGap": 5
     }
   }
 }
