@@ -57,14 +57,14 @@ const tokens = {
 };
 
 // Utils
-function toEther(val) {
+function toEther(val, type = 'ether') {
   val = (typeof val !== 'string' ? (val).toString() : val);
-  return Number(Web3.utils.fromWei(val, 'ether'));
+  return Number(Web3.utils.fromWei(val, type));
 }
 
-function toWei(val) {
+function toWei(val, type = 'ether') {
   val = (typeof val !== 'string' ? (val).toString() : val);
-  return Web3.utils.toWei(val, 'ether');
+  return Web3.utils.toWei(val, type);
 }
 
 function round(value, decimals) {
@@ -133,7 +133,7 @@ async function createTransaction(to, data, gas) {
   try {
     txid = await sendTransaction({
       nonce: await getNonce(),
-      gasPrice: 15000000000, // 15 gwei
+      gasPrice: toWei(config.bot.tx.gasPrice, 'gwei'),
       gasLimit: gas,
       data: data,
       to: to,

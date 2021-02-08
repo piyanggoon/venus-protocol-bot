@@ -11,6 +11,9 @@
       "exchangeRate": true,
       "liquidityFix": 35,
       "liquidityGap": 5
+    },
+    "tx": {
+      "gasPrice": 15
     }
   }
 }
