@@ -133,7 +133,7 @@ async function createTransaction(to, data, gas) {
   try {
     txid = await sendTransaction({
       nonce: await getNonce(),
-      gasPrice: toWei(config.bot.tx.gasPrice, 'gwei'),
+      gasPrice: parseInt(toWei(config.bot.tx.gasPrice, 'gwei')),
       gasLimit: gas,
       data: data,
       to: to,
