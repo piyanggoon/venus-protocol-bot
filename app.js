@@ -161,6 +161,17 @@ async function estimateGas(owner, func) {
   return gas; 
 }
 
+async function createTx(owner, to, func) {
+  let txid = '';
+  try {
+    let gas = await estimateGas(owner, func);
+    txid = await createTransaction(to, func.encodeABI(), gas);
+  } catch (err) {
+    // empty
+  }
+  return txid;
+}
+
 // Binance
 function getExchangePrices() {
   return new Promise((resolve) => {
@@ -203,15 +214,15 @@ async function getOraclePrice(token) {
 
 async function getOraclePrices(tokens = []) {
   let result = {};
-  let res = await venusLens.methods.vTokenUnderlyingPriceAll(tokens).call();
-  res.forEach((val) => {
+  let prices = await venusLens.methods.vTokenUnderlyingPriceAll(tokens).call();
+  for (let val of prices) {
     result[getTokenName(val.vToken)] = toEther(val.underlyingPrice);
-  })
+  }
   return result;
 }
 
 async function getVTokenBalances(tokens = [], owner) {
-  return await venusLens.methods.vTokenBalancesAll(tokens, owner).call();
+  return (await venusLens.methods.vTokenBalancesAll(tokens, owner).call());
 }
 
 async function getVTokens(tokens, owner, prices) {
@@ -305,30 +316,22 @@ async function getVaultAPY(amount = 0, price) {
 // mint, repay, stake, unstake
 async function mintVAI(owner, amount) {
   let func = vaiUnitroller.methods.mintVAI(amount);
-  let gas = await estimateGas(owner, func);
-  let txid = await createTransaction(VaiUnitroller, func.encodeABI(), gas);
-  return txid;
+  return (await createTx(owner, VaiUnitroller, func));
 }
 
 async function repayVAI(owner, amount) {
   let func = vaiUnitroller.methods.repayVAI(amount);
-  let gas = await estimateGas(owner, func);
-  let txid = await createTransaction(VaiUnitroller, func.encodeABI(), gas);
-  return txid;
+  return (await createTx(owner, VaiUnitroller, func));
 }
 
 async function depositVAIVault(owner, amount) {
   let func = vaiVault.methods.deposit(amount);
-  let gas = await estimateGas(owner, func);
-  let txid = await createTransaction(VAIVault, func.encodeABI(), gas);
-  return txid;
+  return (await createTx(owner, VAIVault, func));
 }
 
 async function withdrawVAIVault(owner, amount) {
   let func = vaiVault.methods.withdraw(amount);
-  let gas = await estimateGas(owner, func);
-  let txid = await createTransaction(VAIVault, func.encodeABI(), gas);
-  return txid;
+  return (await createTx(owner, VAIVault, func));
 }
 
 async function calculator() {
