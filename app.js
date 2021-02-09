@@ -182,7 +182,7 @@ async function getExchangePrices() {
 
   try {
     let url = 'https://api.binance.com/api/v3/ticker/price';
-    let json = await got(url).json();
+    let json = await got(url, { timeout: 5000 }).json();
     for (let val of json) {
       let symbol = isPair(pairs, val.symbol);
       if (symbol != '') {
