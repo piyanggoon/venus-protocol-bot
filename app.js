@@ -4,7 +4,7 @@ const Provider = Web3.providers.HttpProvider;
 const Tx = require('ethereumjs-tx').Transaction;
 const Common = require('ethereumjs-common').default;
 const Interval = require('interval-promise');
-const request = require('request');
+const got = require('got');
 
 const config = require('./config.json');
 const VenusABI = require('./networks/mainnet-abi.json');
@@ -173,37 +173,33 @@ async function createTx(owner, to, func) {
 }
 
 // Binance
-function getExchangePrices() {
-  return new Promise((resolve) => {
-    let result = {};
-    let pairs = Object.keys(tokens).map(val => val.substr(1));
-    for (let val of pairs) {
-      result[val] = 0;
+async function getExchangePrices() {
+  let result = {};
+  let pairs = Object.keys(tokens).map(val => val.substr(1));
+  for (let val of pairs) {
+    result[val] = 0;
+  }
+
+  try {
+    let url = 'https://api.binance.com/api/v3/ticker/price';
+    let json = await got(url).json();
+    for (let val of json) {
+      let symbol = isPair(pairs, val.symbol);
+      if (symbol != '') {
+        result[symbol] = round(val.price, 4);
+      }
     }
 
-    let url = 'https://api.binance.com/api/v3/ticker/price';
-    request.get(url, (err, res, body) => {
-      if(err || res.statusCode != 200)
-        return resolve(result);
-
-      let json = JSON.parse(body);
-      for (let val of json) {
-        let symbol = isPair(pairs, val.symbol);
-        if (symbol != '') {
-          result[symbol] = round(val.price, 4);
-        }
-      }
-
-      // fix price
-      result.BETH = result.ETH;
-      result.BUSD = 0;
-      result.USDT = 0;
-      result.USDC = 0;
-      result.DAI = 0;
-
-      resolve(result);
-    });
-  });
+    // fix price
+    result.BETH = result.ETH;
+    result.BUSD = 0;
+    result.USDT = 0;
+    result.USDC = 0;
+    result.DAI = 0;
+  } catch (err) {
+    // empty
+  }
+  return result;
 }
 
 // Venus Protocol
