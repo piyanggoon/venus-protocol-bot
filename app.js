@@ -56,6 +56,11 @@ const tokens = {
   vFIL: '0xf91d58b5aE142DAcC749f58A49FCBac340Cb0343'
 };
 
+const vToken = {};
+for (let val of Object.values(tokens)) {
+  vToken[val] = new web3.eth.Contract(VBep20Delegate, val);
+}
+
 // Utils
 function toEther(val, type = 'ether') {
   val = (typeof val !== 'string' ? (val).toString() : val);
@@ -266,10 +271,9 @@ async function getXVSAccrued(owner, price) {
 }
 
 async function getVTokenAPY(token) {
-  let vToken = new web3.eth.Contract(VBep20Delegate, token);
-  let supplyRatePerBlock = await vToken.methods.supplyRatePerBlock().call();
+  let supplyRatePerBlock = await vToken[token].methods.supplyRatePerBlock().call();
       supplyRatePerBlock = (supplyRatePerBlock / 1e18);
-  let borrowRatePerBlock = await vToken.methods.borrowRatePerBlock().call();
+  let borrowRatePerBlock = await vToken[token].methods.borrowRatePerBlock().call();
       borrowRatePerBlock = (borrowRatePerBlock / 1e18);
   let blockPerDay = (20 * 60 * 24);
   return {
@@ -279,16 +283,15 @@ async function getVTokenAPY(token) {
 }
 
 async function getVenusAPY(token, prices) {
-  let vToken = new web3.eth.Contract(VBep20Delegate, token);
   let venusSpeed = await unitroller.methods.venusSpeeds(token).call();
       venusSpeed = (venusSpeed / 1e18);
   let venusPrice = prices.XVS;
   let tokenPrice = prices[getTokenName(token)];
-  let exchangeRate = await vToken.methods.exchangeRateCurrent().call();
+  let exchangeRate = await vToken[token].methods.exchangeRateCurrent().call();
       exchangeRate = (exchangeRate / 1e18);
-  let totalBorrows = await vToken.methods.totalBorrowsCurrent().call();
+  let totalBorrows = await vToken[token].methods.totalBorrowsCurrent().call();
       totalBorrows = (totalBorrows / 1e18);
-  let totalSupply = await vToken.methods.totalSupply().call();
+  let totalSupply = await vToken[token].methods.totalSupply().call();
       totalSupply = ((totalSupply * exchangeRate) / 1e18);
   let venusPerDay = (venusSpeed * (20 * 60 * 24));
   let tokenPerDay = ((venusPerDay * venusPrice) / tokenPrice);
