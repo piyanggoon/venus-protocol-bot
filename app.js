@@ -223,23 +223,45 @@ async function getOraclePrices(tokens = []) {
   return result;
 }
 
+async function getVTokenMetadataAll(tokens = []) {
+  return (await venusLens.methods.vTokenMetadataAll(tokens).call());
+}
+
 async function getVTokenBalances(tokens = [], owner) {
   return (await venusLens.methods.vTokenBalancesAll(tokens, owner).call());
 }
 
+async function getVTokenMetadatas(tokens) {
+  let result = {};
+  let metas = await getVTokenMetadataAll(tokens);
+  for (let val of metas) {
+    let token = getTokenName(val.vToken);
+    result[token] = {
+      collateralFactorMantissa: val.collateralFactorMantissa
+    };
+  }
+  return result;
+}
+
 async function getVTokens(tokens, owner, prices) {
   let result = [];
+  let metas = await getVTokenMetadatas(tokens);
   let balances = await getVTokenBalances(tokens, owner);
   for (let val of balances) {
     if (val.balanceOfUnderlying != '0' || val.borrowBalanceCurrent != '0') {
       let token = getTokenName(val.vToken);
-      result.push({
+      let obj = {
         token: token,
         supply: toEther(val.balanceOfUnderlying),
         borrow: toEther(val.borrowBalanceCurrent),
         supplyPrice: (toEther(val.balanceOfUnderlying) * prices[token]),
         borrowPrice: (toEther(val.borrowBalanceCurrent) * prices[token])
-      });
+      };
+
+      let borrowLimit = (obj.supplyPrice * (metas[token].collateralFactorMantissa / 1e18));
+      obj.borrowLimit = (borrowLimit > 0 ? borrowLimit : 0); 
+
+      result.push(obj);
     }
   }
   return result;
@@ -358,7 +380,7 @@ async function calculator() {
   let totalSupply = vTokens.reduce((a, b) => (a + b.supplyPrice), 0);
   let totalBorrow = vTokens.reduce((a, b) => (a + b.borrowPrice), 0);
       totalBorrow += VAIBorrow;
-  let borrowLimit = (totalSupply * 0.60); // 60% of supply
+  let borrowLimit = vTokens.reduce((a, b) => (a + b.borrowLimit), 0);
   let borrowPercent = ((totalBorrow / borrowLimit) * 100);
   let liquidity = (borrowLimit - totalBorrow);
   let liquidityPercent = (100 - borrowPercent);
